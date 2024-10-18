@@ -9,6 +9,7 @@
 	  <OutputType>Library</OutputType>
 	  <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
 	  <Version>1.0.0</Version>
+  <IsPackable>true</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>

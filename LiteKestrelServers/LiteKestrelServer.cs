@@ -83,20 +83,6 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
 
     public X509Certificate2? X509Certificate2 { get; set; }
 
-    public async Task Start2()
-    {
-        ILoggerFactory _loggerFactory = DefaultLoggerFactories.Empty;
-        KestrelServer server = new(KestrelOptions.Defaults, new SocketTransportFactory(SocketOptions.Defaults, _loggerFactory), _loggerFactory);
-        foreach (var port in ListenPorts)
-        {
-            server.Options.ListenAnyIP(port, listenOptions =>
-            {
-                //listenOptions.UseHttps(); // 如果需要HTTPS
-            });
-        }
-        await server.StartAsync(new App(SessionQueue), CancellationToken.None);
-    }
-
     public async Task Start()
     {
         var builder = WebApplication.CreateBuilder();
@@ -115,6 +101,7 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
             }
         });
         var app = builder.Build();
+        app.UseWebSockets();
         app.Use(async (HttpContext context,Func<Task> next) =>
         {
             if (context.WebSockets.IsWebSocketRequest)
@@ -139,6 +126,7 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
                         {
                             break;
                         }
+                        //Logger.InfoParameter("websocket message", message.Message);
                         MemoryStream requestBody = new(Util.UTF8.GetBytes(message.Message));
                         WebsocketServerSendStream responseBody = new(webSocket);
                         responseBody.OnClose = () =>
@@ -146,17 +134,19 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
                             requestBody.Dispose();
                         };
                         Uri? url = null;
+                        bool containsUrl = false;
                         if (Json.TryParse(message.Message, out var msg))
                         {
                             if (msg.ContainsKey("url"))
                             {
                                 url = new Uri(context.Request.GetUri()!, msg.Read("url", string.Empty));
-                            }
-                            else
-                            {
-                                throw new Exception($"url not found, {msg}");
+                                containsUrl = true;
                             }
                             msg.Dispose();
+                        }
+                        if (containsUrl == false)
+                        {
+                            continue;
                         }
                         Session session = new(new WebsocketRequest(url, requestBody, new KestrelHttpHeaders(context.Request.Headers)), new WebsocketResponse(webSocket, responseBody));
                         SessionQueue.Enqueue(session);

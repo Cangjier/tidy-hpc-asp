@@ -14,7 +14,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Server.Kestrel.Core" Version="2.2.0" />
-    <PackageReference Include="TidyHPC" Version="1.0.15" />
+    <PackageReference Include="TidyHPC" Version="1.0.16" />
   </ItemGroup>
 
 </Project>

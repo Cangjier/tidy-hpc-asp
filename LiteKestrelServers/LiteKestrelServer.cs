@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.Server.Kestrel.Transport.Sockets;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Primitives;
 using System.Net.WebSockets;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
@@ -15,6 +16,7 @@ using TidyHPC.LiteJson;
 using TidyHPC.Loggers;
 using TidyHPC.Queues;
 using TidyHPC.Routers.Urls;
+using TidyHPC.Routers.Urls.Responses;
 
 namespace TidyHPC.ASP.LiteKestrelServers;
 
@@ -126,13 +128,13 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
                         {
                             break;
                         }
-                        //Logger.InfoParameter("websocket message", message.Message);
                         MemoryStream requestBody = new(Util.UTF8.GetBytes(message.Message));
                         WebsocketServerSendStream responseBody = new(webSocket);
                         responseBody.OnClose = () =>
                         {
                             requestBody.Dispose();
                         };
+                        
                         Uri? url = null;
                         bool containsUrl = false;
                         if (Json.TryParse(message.Message, out var msg))

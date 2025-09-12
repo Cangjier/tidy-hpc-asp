@@ -85,7 +85,7 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
 
     public X509Certificate2? X509Certificate2 { get; set; }
 
-    public async Task Start()
+    public async Task Start(CancellationToken cancellationToken)
     {
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
@@ -123,7 +123,7 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
                 {
                     try
                     {
-                        var message = await webSocket.ReceiveMessage();
+                        var message = await webSocket.ReceiveMessage(cancellationToken);
                         if (message.CloseStatus == WebSocketCloseStatus.NormalClosure)
                         {
                             break;
@@ -172,5 +172,15 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
             }
         });
         await app.RunAsync();
+    }
+
+    public async Task Start()
+    {
+        await Start(CancellationToken.None);
+    }
+
+    public async Task<Session> GetNextSession(CancellationToken cancellationToken)
+    {
+        return await SessionQueue.Dequeue(cancellationToken);
     }
 }

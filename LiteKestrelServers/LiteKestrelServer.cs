@@ -20,6 +20,9 @@ using TidyHPC.Routers.Urls.Responses;
 
 namespace TidyHPC.ASP.LiteKestrelServers;
 
+/// <summary>
+/// 轻量级Kestrel服务器
+/// </summary>
 public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
 {
     private class KestrelOptions : IOptions<KestrelServerOptions>

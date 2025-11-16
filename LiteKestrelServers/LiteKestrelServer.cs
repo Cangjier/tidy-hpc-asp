@@ -86,6 +86,8 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
 
     public List<int> ListenPorts { get; } = [];
 
+    public bool EnableAnyIP { get; set; } = true;
+
     public X509Certificate2? X509Certificate2 { get; set; }
 
     public async Task Start(CancellationToken cancellationToken)
@@ -96,13 +98,27 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
         {
             foreach (var port in ListenPorts)
             {
-                serverOptions.ListenAnyIP(port, listenOptions =>
+                if (EnableAnyIP)
                 {
-                    if(X509Certificate2 != null)
+                    serverOptions.ListenAnyIP(port, listenOptions =>
                     {
-                        listenOptions.UseHttps(X509Certificate2);
-                    }
-                });
+                        if (X509Certificate2 != null)
+                        {
+                            listenOptions.UseHttps(X509Certificate2);
+                        }
+                    });
+                }
+                else
+                {
+                    serverOptions.Listen(System.Net.IPAddress.Loopback,port, listenOptions =>
+                    {
+                        if (X509Certificate2 != null)
+                        {
+                            listenOptions.UseHttps(X509Certificate2);
+                        }
+                    });
+                }
+                
             }
         });
         var app = builder.Build();

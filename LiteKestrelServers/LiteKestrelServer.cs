@@ -110,7 +110,7 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
                 }
                 else
                 {
-                    serverOptions.Listen(System.Net.IPAddress.Loopback,port, listenOptions =>
+                    serverOptions.Listen(System.Net.IPAddress.Loopback, port, listenOptions =>
                     {
                         if (X509Certificate2 != null)
                         {
@@ -118,15 +118,16 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
                         }
                     });
                 }
-                
+
             }
         });
         var app = builder.Build();
         app.UseWebSockets();
-        app.Use(async (HttpContext context,Func<Task> next) =>
+        app.Use(async (HttpContext context, Func<Task> next) =>
         {
             if (context.WebSockets.IsWebSocketRequest)
             {
+                Logger.Debug("Accepting WebSocket request");
                 WebSocket webSocket;
                 try
                 {
@@ -153,7 +154,7 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
                         {
                             requestBody.Dispose();
                         };
-                        
+
                         Uri? url = null;
                         bool containsUrl = false;
                         if (Json.TryParse(message.Message, out var msg))
@@ -184,13 +185,15 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
             {
                 var request = new KestrelHttpFeatureRequest(context.Features);
                 var response = new KestrelHttpFeatureResponse(context.Features);
+                Logger.Debug($"Accepting HTTP request: {context.Request.GetUri()}");
                 response.StatusCode = 200;
                 var session = new Session(request, response);
                 SessionQueue.Enqueue(session);
                 await response.CompletionSource.Task;
             }
         });
-        await app.RunAsync();
+        await app.RunAsync(cancellationToken);
+        Logger.Info("LiteKestrelServer stopped");
     }
 
     public async Task Start()

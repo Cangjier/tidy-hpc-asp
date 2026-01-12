@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.Server.Kestrel.Transport.Sockets;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
+using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
@@ -25,6 +26,13 @@ namespace TidyHPC.ASP.LiteKestrelServers;
 /// </summary>
 public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
 {
+    public class PortConfig
+    {
+        public int Port { get; set; }
+        public bool? EnableAnyIP { get; set; } = null;
+        public X509Certificate2? X509Certificate2 { get; set; } = null;
+    }
+
     private class KestrelOptions : IOptions<KestrelServerOptions>
     {
         private KestrelOptions()
@@ -84,11 +92,11 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
         return await SessionQueue.Dequeue();
     }
 
-    public List<int> ListenPorts { get; } = [];
-
     public bool EnableAnyIP { get; set; } = true;
 
-    public X509Certificate2? X509Certificate2 { get; set; }
+    public bool EnableHttpsRedirect { get; set; } = false;
+
+    public ConcurrentDictionary<int, PortConfig> ListenPorts { get; } = new();
 
     public async Task Start(CancellationToken cancellationToken)
     {
@@ -98,23 +106,23 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
         {
             foreach (var port in ListenPorts)
             {
-                if (EnableAnyIP)
+                if (port.Value.EnableAnyIP ?? EnableAnyIP)
                 {
-                    serverOptions.ListenAnyIP(port, listenOptions =>
+                    serverOptions.ListenAnyIP(port.Value.Port, listenOptions =>
                     {
-                        if (X509Certificate2 != null)
+                        if (port.Value.X509Certificate2 != null)
                         {
-                            listenOptions.UseHttps(X509Certificate2);
+                            listenOptions.UseHttps(port.Value.X509Certificate2);
                         }
                     });
                 }
                 else
                 {
-                    serverOptions.Listen(System.Net.IPAddress.Loopback, port, listenOptions =>
+                    serverOptions.Listen(System.Net.IPAddress.Loopback, port.Value.Port, listenOptions =>
                     {
-                        if (X509Certificate2 != null)
+                        if (port.Value.X509Certificate2 != null)
                         {
-                            listenOptions.UseHttps(X509Certificate2);
+                            listenOptions.UseHttps(port.Value.X509Certificate2);
                         }
                     });
                 }
@@ -122,6 +130,14 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
             }
         });
         var app = builder.Build();
+        if (EnableHttpsRedirect)
+        {
+            if (ListenPorts.ContainsKey(443) == false || ListenPorts.ContainsKey(80) == false)
+            {
+                EnableHttpsRedirect = false;
+                Logger.Warn("EnableHttpsRedirect is disabled because 443 or 80 port is not configured");
+            }
+        }
         app.UseWebSockets();
         app.Use(async (HttpContext context, Func<Task> next) =>
         {
@@ -183,6 +199,18 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
             }
             else
             {
+                if (EnableHttpsRedirect)
+                {
+                    var uri = context.Request.GetUri();
+                    if (uri != null)
+                    {
+                        if (uri.Port == 80 && uri.Scheme == "http")
+                        {
+                            context.Response.Redirect($"https://{uri.Host}{uri.PathAndQuery}");
+                            return;
+                        }
+                    }
+                }
                 var request = new KestrelHttpFeatureRequest(context.Features);
                 var response = new KestrelHttpFeatureResponse(context.Features);
                 Logger.Debug($"Accepting HTTP request: {context.Request.GetUri()}");

@@ -98,6 +98,8 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
 
     public ConcurrentDictionary<int, PortConfig> ListenPorts { get; } = new();
 
+    private ConcurrentDictionary<Guid, Session> SessionIds { get; } = new();
+
     public async Task Start(CancellationToken cancellationToken)
     {
         var builder = WebApplication.CreateBuilder();
@@ -217,9 +219,11 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
                 Logger.Debug($"Accepting HTTP request: {id} {context.Request.GetUri()}");
                 response.StatusCode = 200;
                 var session = new Session(request, response);
+                SessionIds.TryAdd(id, session);
                 SessionQueue.Enqueue(session);
                 await response.CompletionSource.Task;
-                Logger.Debug($"HTTP request completed: {id}");
+                SessionIds.TryRemove(id, out _);
+                Logger.Debug($"Completed HTTP request: {id}, {SessionIds.Count} sessions remaining");
             }
         });
         await app.RunAsync(cancellationToken);

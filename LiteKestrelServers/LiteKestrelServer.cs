@@ -213,11 +213,13 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
                 }
                 var request = new KestrelHttpFeatureRequest(context.Features);
                 var response = new KestrelHttpFeatureResponse(context.Features);
-                Logger.Debug($"Accepting HTTP request: {context.Request.GetUri()}");
+                var id = Guid.NewGuid();
+                Logger.Debug($"Accepting HTTP request: {id} {context.Request.GetUri()}");
                 response.StatusCode = 200;
                 var session = new Session(request, response);
                 SessionQueue.Enqueue(session);
                 await response.CompletionSource.Task;
+                Logger.Debug($"HTTP request completed: {id}");
             }
         });
         await app.RunAsync(cancellationToken);

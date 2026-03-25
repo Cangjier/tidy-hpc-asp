@@ -36,6 +36,18 @@ public class KestrelHttpContextResponse(HttpContext httpContext) :IResponse
         }
     }
 
+    public long? ContentLength
+    {
+        get
+        {
+            return HttpContext.Response.Headers.ContentLength;
+        }
+        set
+        {
+            HttpContext.Response.Headers.ContentLength = value;
+        }
+    }
+
     public void Dispose()
     {
         CompletionSource.TrySetResult();

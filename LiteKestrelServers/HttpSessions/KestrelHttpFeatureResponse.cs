@@ -45,6 +45,18 @@ public class KestrelHttpFeatureResponse(IFeatureCollection features) : IResponse
         }
     }
 
+    public long? ContentLength
+    {
+        get
+        {
+            return ResponseFeature.Headers.ContentLength;
+        }
+        set
+        {
+            ResponseFeature.Headers.ContentLength = value;
+        }
+    }
+
     public void Dispose()
     {
         CompletionSource.TrySetResult();

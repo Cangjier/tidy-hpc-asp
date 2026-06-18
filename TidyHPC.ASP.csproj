@@ -13,10 +13,10 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Server.Kestrel.Core" Version="2.2.0" />
-    <PackageReference Include="TidyHPC" Version="*" />
+    <PackageReference Include="TidyHPC" Version="*" Condition="!Exists('..\tidy-hpc\TidyHPC.csproj')" />
   </ItemGroup>
   
   <ItemGroup>
-    <ProjectReference Include="..\tidy-hpc\TidyHPC.csproj" />
+    <ProjectReference Include="..\tidy-hpc\TidyHPC.csproj" Condition="Exists('..\tidy-hpc\TidyHPC.csproj')" />
   </ItemGroup>
 </Project>

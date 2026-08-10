@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Server.Kestrel.Transport.Sockets;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 using System.Collections.Concurrent;
+using System.Net.Security;
 using System.Net.WebSockets;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
@@ -31,6 +32,7 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
         public int Port { get; set; }
         public bool? EnableAnyIP { get; set; } = null;
         public X509Certificate2? X509Certificate2 { get; set; } = null;
+        public X509Certificate2Collection? X509Certificate2Collection { get; set; } = null;
     }
 
     private class KestrelOptions : IOptions<KestrelServerOptions>
@@ -52,7 +54,9 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
             Value = new SocketTransportOptions()
             {
                 WaitForDataBeforeAllocatingBuffer = false,
-                UnsafePreferInlineScheduling = RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? Environment.GetEnvironmentVariable("DOTNET_SYSTEM_NET_SOCKETS_INLINE_COMPLETIONS") == "1" : false,
+                UnsafePreferInlineScheduling = RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
+                    ? Environment.GetEnvironmentVariable("DOTNET_SYSTEM_NET_SOCKETS_INLINE_COMPLETIONS") == "1"
+                    : false,
             }
         };
 
@@ -94,7 +98,7 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
 
     public bool EnableAnyIP { get; set; } = true;
 
-    public bool EnableHttpsRedirect { get; set; } = false;
+    public bool EnableHttpsRedirect { get; set; }
 
     public ConcurrentDictionary<int, PortConfig> ListenPorts { get; } = new();
 
@@ -106,6 +110,11 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(serverOptions =>
         {
+            serverOptions.ConfigureHttpsDefaults(httpsOptions =>
+            {
+                httpsOptions.SslProtocols = System.Security.Authentication.SslProtocols.Tls13 |
+                                            System.Security.Authentication.SslProtocols.Tls12;
+            });
             foreach (var port in ListenPorts)
             {
                 if (port.Value.EnableAnyIP ?? EnableAnyIP)
@@ -114,7 +123,17 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
                     {
                         if (port.Value.X509Certificate2 != null)
                         {
-                            listenOptions.UseHttps(port.Value.X509Certificate2);
+                            Logger.Info($"Listening on {port.Value.Port} with HTTPS");
+                            listenOptions.UseHttps(httpsOptions =>
+                            {
+                                httpsOptions.ServerCertificate = port.Value.X509Certificate2;
+                                if (port.Value.X509Certificate2Collection != null)
+                                {
+#if NET7_0_OR_GREATER
+                                    httpsOptions.ServerCertificateChain = port.Value.X509Certificate2Collection;
+#endif
+                                }
+                            });
                         }
                     });
                 }
@@ -124,11 +143,11 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
                     {
                         if (port.Value.X509Certificate2 != null)
                         {
+                            Logger.Info($"Listening on {port.Value.Port} with HTTPS");
                             listenOptions.UseHttps(port.Value.X509Certificate2);
                         }
                     });
                 }
-
             }
         });
         var app = builder.Build();
@@ -140,6 +159,7 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
                 Logger.Warn("EnableHttpsRedirect is disabled because 443 or 80 port is not configured");
             }
         }
+
         app.UseWebSockets();
         app.Use(async (HttpContext context, Func<Task> next) =>
         {
@@ -157,6 +177,7 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
                     context.Response.StatusCode = 500;
                     return;
                 }
+
                 while (true)
                 {
                     try
@@ -166,12 +187,10 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
                         {
                             break;
                         }
+
                         MemoryStream requestBody = new(Util.UTF8.GetBytes(message.Message));
                         WebsocketServerSendStream responseBody = new(webSocket);
-                        responseBody.OnClose = () =>
-                        {
-                            requestBody.Dispose();
-                        };
+                        responseBody.OnClose = () => { requestBody.Dispose(); };
 
                         Uri? url = null;
                         bool containsUrl = false;
@@ -182,13 +201,18 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
                                 url = new Uri(context.Request.GetUri()!, msg.Read("url", string.Empty));
                                 containsUrl = true;
                             }
+
                             msg.Dispose();
                         }
+
                         if (containsUrl == false)
                         {
                             continue;
                         }
-                        Session session = new(new WebsocketRequest(url, requestBody, new KestrelHttpHeaders(context.Request.Headers)), new WebsocketResponse(webSocket, responseBody));
+
+                        Session session =
+                            new(new WebsocketRequest(url, requestBody, new KestrelHttpHeaders(context.Request.Headers)),
+                                new WebsocketResponse(webSocket, responseBody));
                         SessionQueue.Enqueue(session);
                     }
                     catch (Exception e)
@@ -197,6 +221,7 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
                         break;
                     }
                 }
+
                 webSocket.Dispose();
             }
             else
@@ -206,13 +231,14 @@ public class LiteKestrelServer : Routers.Urls.Interfaces.IServer
                     var uri = context.Request.GetUri();
                     if (uri != null)
                     {
-                        if (uri.Port == 80 && uri.Scheme == "http")
+                        if (uri is { Port: 80, Scheme: "http" })
                         {
                             context.Response.Redirect($"https://{uri.Host}{uri.PathAndQuery}");
                             return;
                         }
                     }
                 }
+
                 var request = new KestrelHttpFeatureRequest(context.Features);
                 var response = new KestrelHttpFeatureResponse(context.Features);
                 var id = Guid.NewGuid();
